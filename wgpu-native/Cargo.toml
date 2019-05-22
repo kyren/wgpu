@@ -29,14 +29,16 @@ copyless = "0.1"
 lazy_static = "1.1.0"
 log = "0.4"
 parking_lot = { version = "0.8" }
-hal = { package = "gfx-hal", version = "0.2" }
-gfx-backend-empty = { version = "0.2" }
-gfx-backend-vulkan = { version = "0.2", optional = true }
-gfx-backend-dx11 = { version = "0.2", optional = true }
-gfx-backend-dx12 = { version = "0.2", optional = true }
-gfx-backend-metal = { version = "0.2", optional = true }
-gfx-backend-gl = { version = "0.2", optional = true }
+hal = { package = "gfx-hal", git = "https://github.com/kyren/gfx", branch = "godzilla" }
+gfx-backend-empty = { default-features = false, git = "https://github.com/kyren/gfx", branch = "godzilla" }
+gfx-backend-vulkan = { optional = true, git = "https://github.com/kyren/gfx", branch = "godzilla" }
+gfx-backend-dx11 = { optional = true, git = "https://github.com/kyren/gfx", branch = "godzilla" }
+gfx-backend-dx12 = { optional = true, git = "https://github.com/kyren/gfx", branch = "godzilla" }
+gfx-backend-metal = { optional = true, git = "https://github.com/kyren/gfx", branch = "godzilla" }
+gfx-backend-gl = { optional = true, git = "https://github.com/kyren/gfx", branch = "godzilla" }
 #rendy-memory = { git = "https://github.com/rustgd/rendy", rev = "ce7dd7f", features = ["gfx-hal"] }
 serde = { version = "1.0", features = ["serde_derive"], optional = true }
 vec_map = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 winit = { version = "0.19", optional = true }
