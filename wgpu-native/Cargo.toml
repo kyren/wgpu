@@ -42,3 +42,7 @@ vec_map = "0.8"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 winit = { version = "0.19", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3.6"
+features = [ "Element", "HtmlCanvasElement" ]

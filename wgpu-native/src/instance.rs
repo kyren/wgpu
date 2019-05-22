@@ -83,8 +83,8 @@ pub fn wgpu_create_gl_instance(windowed_context: back::glutin::WindowedContext) 
 }
 
 #[cfg(all(feature = "local", feature = "gfx-backend-gl", target_arch = "wasm32"))]
-pub fn wgpu_create_webgl_instance(canvas_id: String) -> InstanceId {
-    let raw = back::Surface::from_window(back::Window { canvas_id });
+pub fn wgpu_create_webgl_instance(canvas: web_sys::HtmlCanvasElement) -> InstanceId {
+    let raw = back::Surface::from_window(back::Window::from_canvas(canvas));
     let surface = SurfaceHandle::new(raw);
     HUB.surfaces.register_local(surface)
 }
