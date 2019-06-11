@@ -40,4 +40,10 @@ rendy-memory = "0.3"
 rendy-descriptor = "0.3"
 serde = { version = "1.0", features = ["serde_derive"], optional = true }
 vec_map = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 winit = { version = "0.19", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3.6"
+features = [ "Node", "Element", "HtmlCanvasElement", "Document", "HtmlElement" ]

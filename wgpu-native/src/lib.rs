@@ -1,4 +1,4 @@
-#[cfg(all(feature = "local", feature = "window-winit"))]
+#[cfg(all(feature = "local", feature = "window-winit", not(target_arch = "wasm32")))]
 pub extern crate winit;
 
 #[cfg(feature = "gfx-backend-dx11")]
@@ -44,7 +44,7 @@ pub use hal::memory::Pod as Pod;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "gfx-backend-gl")]
+#[cfg(all(feature = "gfx-backend-gl", not(target_arch = "wasm32")))]
 pub use back::glutin;
 
 use std::{

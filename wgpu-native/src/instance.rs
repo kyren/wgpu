@@ -75,11 +75,18 @@ pub extern "C" fn wgpu_create_instance() -> InstanceId {
     HUB.instances.register_local(inst, &mut Token::root())
 }
 
-#[cfg(all(feature = "local", feature = "gfx-backend-gl"))]
+#[cfg(all(feature = "local", feature = "gfx-backend-gl", not(target_arch = "wasm32")))]
 pub fn wgpu_create_gl_instance(windowed_context: back::glutin::WindowedContext) -> InstanceId {
     let raw = back::Surface::from_window(windowed_context);
     let surface = SurfaceHandle::new(raw);
     HUB.surfaces.register_local(surface, &mut Token::root())
+}
+
+#[cfg(all(feature = "local", feature = "gfx-backend-gl", target_arch = "wasm32"))]
+pub fn wgpu_create_webgl_instance(canvas: web_sys::HtmlCanvasElement) -> InstanceId {
+    let raw = back::Surface::from_window(back::Window::from_canvas(canvas));
+    let surface = SurfaceHandle::new(raw);
+    HUB.surfaces.register_local(surface)
 }
 
 #[cfg(all(feature = "window-winit", not(feature = "gfx-backend-gl")))]
