@@ -1849,7 +1849,7 @@ pub fn device_create_swap_chain(
                     frame.view_id.ref_count,
                 );
             }
-            unsafe { old.command_pool.reset() };
+            unsafe { old.command_pool.reset(true) };
             (Some(old.raw), old.sem_available, old.command_pool)
         }
         _ => unsafe {
