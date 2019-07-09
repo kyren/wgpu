@@ -86,7 +86,7 @@ pub fn wgpu_create_gl_instance(windowed_context: back::glutin::WindowedContext) 
 pub fn wgpu_create_webgl_instance(canvas: web_sys::HtmlCanvasElement) -> InstanceId {
     let raw = back::Surface::from_window(back::Window::from_canvas(canvas));
     let surface = SurfaceHandle::new(raw);
-    HUB.surfaces.register_local(surface)
+    HUB.surfaces.register_local(surface, &mut Token::root())
 }
 
 #[cfg(all(feature = "window-winit", not(feature = "gfx-backend-gl")))]

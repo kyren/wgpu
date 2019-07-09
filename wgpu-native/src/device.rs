@@ -982,6 +982,7 @@ pub fn device_create_sampler(
         },
         border: hal::image::PackedColor(0),
         anisotropic: hal::image::Anisotropic::Off, //TODO
+        normalized: true,
     };
     let raw = unsafe { device.raw.create_sampler(info).unwrap() };
 
