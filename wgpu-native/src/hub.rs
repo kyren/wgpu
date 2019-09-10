@@ -385,7 +385,7 @@ impl<B: GfxBackend> Default for Hub<B> {
 
 #[derive(Debug, Default)]
 pub struct Hubs {
-    #[cfg(any(not(any(target_os = "ios", target_os = "macos")), feature = "gfx-backend-vulkan"))]
+    #[cfg(all(not(target_arch = "wasm32"), any(not(any(target_os = "ios", target_os = "macos")), feature = "gfx-backend-vulkan")))]
     vulkan: Hub<backend::Vulkan>,
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     metal: Hub<backend::Metal>,
@@ -393,6 +393,8 @@ pub struct Hubs {
     dx12: Hub<backend::Dx12>,
     #[cfg(windows)]
     dx11: Hub<backend::Dx11>,
+    #[cfg(target_arch = "wasm32")]
+    gl: Hub<backend::Gl>,
 }
 
 #[derive(Debug)]
@@ -416,7 +418,7 @@ pub trait GfxBackend: hal::Backend {
     fn get_surface_mut(surface: &mut Surface) -> &mut Self::Surface;
 }
 
-#[cfg(any(not(any(target_os = "ios", target_os = "macos")), feature = "gfx-backend-vulkan"))]
+#[cfg(all(not(target_arch = "wasm32"), any(not(any(target_os = "ios", target_os = "macos")), feature = "gfx-backend-vulkan")))]
 impl GfxBackend for backend::Vulkan {
     const VARIANT: Backend = Backend::Vulkan;
     fn hub() -> &'static Hub<Self> {
@@ -457,5 +459,16 @@ impl GfxBackend for backend::Dx11 {
     }
     fn get_surface_mut(surface: &mut Surface) -> &mut Self::Surface {
         &mut surface.dx11
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl GfxBackend for backend::Gl {
+    const VARIANT: Backend = Backend::Gl;
+    fn hub() -> &'static Hub<Self> {
+        &GLOBAL.hubs.gl
+    }
+    fn get_surface_mut(surface: &mut Surface) -> &mut Self::Surface {
+        &mut surface.gl
     }
 }
