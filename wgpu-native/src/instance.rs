@@ -26,12 +26,61 @@ use hal::{adapter::PhysicalDevice as _, queue::QueueFamily as _, Instance as _};
 #[cfg(feature = "local")]
 use std::marker::PhantomData;
 
+#[cfg(target_arch = "wasm32")]
+mod gl_wasm {
+    use wasm_bindgen::JsCast;
+
+    #[derive(Debug)]
+    pub struct Instance {
+        pub canvas: web_sys::HtmlCanvasElement,
+        pub surface: gfx_backend_gl::Surface,
+    }
+
+    unsafe impl Send for Instance {}
+    unsafe impl Sync for Instance {}
+
+    impl hal::Instance<gfx_backend_gl::Backend> for Instance {
+        fn create(_name: &str, _version: u32) -> Result<Self, hal::UnsupportedBackend> {
+            let document = web_sys::window()
+                .and_then(|win| win.document())
+                .expect("Cannot get document");
+            let canvas = document
+                .create_element("canvas")
+                .expect("Cannot create canvas")
+                .dyn_into::<web_sys::HtmlCanvasElement>()
+                .expect("Cannot get canvas element");
+            document
+                .body()
+                .expect("Cannot get document body")
+                .append_child(&canvas)
+                .expect("Cannot insert canvas into document body");
+            let surface = gfx_backend_gl::Surface::from_canvas(canvas.clone());
+            Ok(Instance { canvas, surface })
+        }
+
+        fn enumerate_adapters(&self) -> Vec<hal::adapter::Adapter<gfx_backend_gl::Backend>> {
+            self.surface.enumerate_adapters()
+        }
+
+        unsafe fn create_surface(
+            &self,
+            _: &impl raw_window_handle::HasRawWindowHandle,
+        ) -> Result<gfx_backend_gl::Surface, hal::window::InitError> {
+            unimplemented!()
+        }
+
+        unsafe fn destroy_surface(&self, _surface: gfx_backend_gl::Surface) {}
+    }
+}
 
 #[derive(Debug)]
 pub struct Instance {
-    #[cfg(any(
-        not(any(target_os = "ios", target_os = "macos")),
-        feature = "gfx-backend-vulkan"
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        any(
+            not(any(target_os = "ios", target_os = "macos")),
+            feature = "gfx-backend-vulkan"
+        )
     ))]
     vulkan: Option<gfx_backend_vulkan::Instance>,
     #[cfg(any(target_os = "ios", target_os = "macos"))]
@@ -40,14 +89,19 @@ pub struct Instance {
     dx12: Option<gfx_backend_dx12::Instance>,
     #[cfg(windows)]
     dx11: gfx_backend_dx11::Instance,
+    #[cfg(target_arch = "wasm32")]
+    gl: gl_wasm::Instance,
 }
 
 impl Instance {
     pub fn new(name: &str, version: u32) -> Self {
         Instance {
-            #[cfg(any(
-                not(any(target_os = "ios", target_os = "macos")),
-                feature = "gfx-backend-vulkan"
+            #[cfg(all(
+                not(target_arch = "wasm32"),
+                any(
+                    not(any(target_os = "ios", target_os = "macos")),
+                    feature = "gfx-backend-vulkan"
+                )
             ))]
             vulkan: gfx_backend_vulkan::Instance::create(name, version).ok(),
             #[cfg(any(target_os = "ios", target_os = "macos"))]
@@ -56,6 +110,8 @@ impl Instance {
             dx12: gfx_backend_dx12::Instance::create(name, version).ok(),
             #[cfg(windows)]
             dx11: gfx_backend_dx11::Instance::create(name, version).unwrap(),
+            #[cfg(target_arch = "wasm32")]
+            gl: gl_wasm::Instance::create(name, version).unwrap(),
         }
     }
 
@@ -90,9 +146,12 @@ type GfxSurface<B> = <B as hal::Backend>::Surface;
 
 #[derive(Debug)]
 pub struct Surface {
-    #[cfg(any(
-        not(any(target_os = "ios", target_os = "macos")),
-        feature = "gfx-backend-vulkan"
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        any(
+            not(any(target_os = "ios", target_os = "macos")),
+            feature = "gfx-backend-vulkan"
+        )
     ))]
     pub(crate) vulkan: Option<GfxSurface<backend::Vulkan>>,
     #[cfg(any(target_os = "ios", target_os = "macos"))]
@@ -101,6 +160,8 @@ pub struct Surface {
     pub(crate) dx12: Option<GfxSurface<backend::Dx12>>,
     #[cfg(windows)]
     pub(crate) dx11: GfxSurface<backend::Dx11>,
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) gl: GfxSurface<backend::Gl>,
 }
 
 #[derive(Debug)]
@@ -190,7 +251,7 @@ pub struct DeviceDescriptor {
     pub limits: Limits,
 }
 
-#[cfg(feature = "local")]
+#[cfg(all(feature = "local", not(target_arch = "wasm32")))]
 pub fn wgpu_create_surface(raw_handle: raw_window_handle::RawWindowHandle) -> SurfaceId {
     use raw_window_handle::RawWindowHandle as Rwh;
 
@@ -248,6 +309,25 @@ pub fn wgpu_create_surface(raw_handle: raw_window_handle::RawWindowHandle) -> Su
     GLOBAL
         .surfaces
         .register_identity(PhantomData, surface, &mut token)
+}
+
+#[cfg(all(feature = "local", target_arch = "wasm32"))]
+pub type SurfaceElement = web_sys::HtmlCanvasElement;
+
+#[cfg(all(feature = "local", target_arch = "wasm32"))]
+pub fn wgpu_create_surface_with_element() -> (SurfaceId, SurfaceElement) {
+    let instance = &GLOBAL.instance;
+    let surface = instance.gl.surface.clone();
+    let element = instance.gl.canvas.clone();
+    let surface = Surface {
+        gl: surface,
+    };
+
+    let mut token = Token::root();
+    let surface_id = GLOBAL
+        .surfaces
+        .register_identity(PhantomData, surface, &mut token);
+    (surface_id, element)
 }
 
 #[cfg(all(
@@ -329,10 +409,14 @@ pub fn request_adapter(
     let id_metal = find_input(Backend::Metal);
     let id_dx12 = find_input(Backend::Dx12);
     let id_dx11 = find_input(Backend::Dx11);
+    let id_gl = find_input(Backend::Gl);
 
-    #[cfg(any(
-        not(any(target_os = "ios", target_os = "macos")),
-        feature = "gfx-backend-vulkan"
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        any(
+            not(any(target_os = "ios", target_os = "macos")),
+            feature = "gfx-backend-vulkan"
+        )
     ))]
     let mut adapters_vk = match instance.vulkan {
         Some(ref inst) if id_vulkan.is_some() => {
@@ -362,6 +446,15 @@ pub fn request_adapter(
     #[cfg(windows)]
     let mut adapters_dx11 = if id_dx11.is_some() {
         let adapters = instance.dx11.enumerate_adapters();
+        device_types.extend(adapters.iter().map(|ad| ad.info.device_type.clone()));
+        adapters
+    } else {
+        Vec::new()
+    };
+
+    #[cfg(target_arch = "wasm32")]
+    let mut adapters_gl = if id_gl.is_some() {
+        let adapters = instance.gl.surface.enumerate_adapters();
         device_types.extend(adapters.iter().map(|ad| ad.info.device_type.clone()));
         adapters
     } else {
@@ -400,9 +493,12 @@ pub fn request_adapter(
     let mut token = Token::root();
 
     let mut selected = preferred_gpu.unwrap_or(0);
-    #[cfg(any(
-        not(any(target_os = "ios", target_os = "macos")),
-        feature = "gfx-backend-vulkan"
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        any(
+            not(any(target_os = "ios", target_os = "macos")),
+            feature = "gfx-backend-vulkan"
+        )
     ))]
     {
         if selected < adapters_vk.len() {
@@ -464,7 +560,23 @@ pub fn request_adapter(
         }
         selected -= adapters_dx11.len();
     }
-    let _ = (selected, id_vulkan, id_metal, id_dx12, id_dx11);
+    #[cfg(target_arch = "wasm32")]
+    {
+        if selected < adapters_gl.len() {
+            let adapter = Adapter {
+                raw: adapters_gl.swap_remove(selected),
+            };
+            log::info!("Adapter Vulkan {:?}", adapter.raw.info);
+            let id_out = backend::Gl::hub(global).adapters.register_identity(
+                id_vulkan.unwrap(),
+                adapter,
+                &mut token,
+            );
+            return pick(id_out, id_gl);
+        }
+        selected -= adapters_gl.len();
+    }
+    let _ = (selected, id_vulkan, id_metal, id_dx12, id_dx11, id_gl);
     unreachable!()
 }
 
@@ -505,23 +617,26 @@ pub fn adapter_request_device<B: GfxBackend>(
         };
 
         let limits = adapter.physical_device.limits();
-        assert_eq!(
-            0,
-            BIND_BUFFER_ALIGNMENT % limits.min_storage_buffer_offset_alignment,
-            "Adapter storage buffer offset alignment not compatible with WGPU"
-        );
-        assert_eq!(
-            0,
-            BIND_BUFFER_ALIGNMENT % limits.min_uniform_buffer_offset_alignment,
-            "Adapter uniform buffer offset alignment not compatible with WGPU"
-        );
-        if limits.max_bound_descriptor_sets == 0 {
-            log::warn!("max_bind_groups limit is missing");
-        } else {
-            assert!(
-                u32::from(limits.max_bound_descriptor_sets) >= desc.limits.max_bind_groups,
-                "Adapter does not support the requested max_bind_groups"
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            assert_eq!(
+                0,
+                BIND_BUFFER_ALIGNMENT % limits.min_storage_buffer_offset_alignment,
+                "Adapter storage buffer offset alignment not compatible with WGPU"
             );
+            assert_eq!(
+                0,
+                BIND_BUFFER_ALIGNMENT % limits.min_uniform_buffer_offset_alignment,
+                "Adapter uniform buffer offset alignment not compatible with WGPU"
+            );
+            if limits.max_bound_descriptor_sets == 0 {
+                log::warn!("max_bind_groups limit is missing");
+            } else {
+                assert!(
+                    u32::from(limits.max_bound_descriptor_sets) >= desc.limits.max_bind_groups,
+                    "Adapter does not support the requested max_bind_groups"
+                );
+            }
         }
 
         let mem_props = adapter.physical_device.memory_properties();
